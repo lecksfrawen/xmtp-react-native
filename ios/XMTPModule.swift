@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import XMTP
+import OSLog
 
 extension Conversation {
 	static func cacheKeyForTopic(clientAddress: String, topic: String) -> String {
@@ -45,7 +46,7 @@ public class XMTPModule: Module {
 	}
 
 	enum Error: Swift.Error {
-		case noClient, conversationNotFound(String), noMessage, invalidKeyBundle, invalidDigest, badPreparation(String)
+		case noClient, conversationNotFound(String), noMessage, invalidKeyBundle, invalidDigest, badPreparation(String), dataNotFound
 	}
 
 	public func definition() -> ModuleDefinition {
@@ -130,14 +131,29 @@ public class XMTPModule: Module {
 
 		// Import a conversation from its serialized topic data.
 		AsyncFunction("importConversationTopicData") { (clientAddress: String, topicData: String) -> String in
+			let currentID = UUID().uuidString
+			log2.timeStart(currentID)
+			log2.trace("Start of importConversationTopicData \(#file), \(#function), \(#line)")
+			
 			guard let client = await clientsManager.getClient(key: clientAddress) else {
 				throw Error.noClient
 			}
+			log2.trace("I was able to get a new client with clientAddress \(clientAddress) \(#file), \(#function), \(#line)")
+			guard let decodedData = Data(base64Encoded: Data(topicData.utf8)) 
+			else {
+				throw Error.dataNotFound
+			}
 			let data = try Xmtp_KeystoreApi_V1_TopicMap.TopicData(
-				serializedData: Data(base64Encoded: Data(topicData.utf8))!
+				serializedData: decodedData
 			)
+			log2.trace("I was able to get data after deserializing protobuf topicData \(data) \(#file), \(#function), \(#line)")
 			let conversation = await client.conversations.importTopicData(data: data)
+			log2.trace("I was able to get conversation from importTopicData function \(conversation) \(#file), \(#function), \(#line)")
 			await conversationsManager.set(conversation.cacheKey(clientAddress), conversation)
+			log2.trace("I was able to set conversation conversationsManager \(conversation) \(#file), \(#function), \(#line)")
+			
+			log2.trace("End of importConversationTopicData \(#file), \(#function), \(#line)")
+			log2.timeEnd(currentID)
 			return try ConversationWrapper.encode(conversation, client: client)
 		}
 

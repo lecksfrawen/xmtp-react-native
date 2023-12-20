@@ -10,7 +10,10 @@ import {
   StaticAttachmentCodec,
   RemoteAttachmentCodec,
   RemoteAttachmentContent,
+  importConversationTopicData,
+  exportConversationTopicData,
 } from '../../src/index'
+import XMTPModule from 'xmtp-react-native-sdk/XMTPModule'
 
 type EncodedContent = content.EncodedContent
 type ContentTypeId = content.ContentTypeId
@@ -83,6 +86,44 @@ test('can make a client', async () => {
     )
   }
   return client.address.length > 0
+})
+
+test('can call importConversationTopicData', async () => {
+  const bob = await Client.createRandom({ env: 'local' })
+  const alice = await Client.createRandom({ env: 'local' })
+  await delayToPropogate()
+
+  const bobConversation = await bob.conversations.newConversation(alice.address)
+  await delayToPropogate()
+
+  const prepared = await bobConversation.prepareMessage('hi')
+  if (!prepared.preparedAt) {
+    throw new Error('missing `preparedAt` on prepared message')
+  }
+
+  // Either of these should work:
+  await bobConversation.sendPreparedMessage(prepared)
+  // await bob.sendPreparedMessage(prepared);
+
+  await delayToPropogate()
+  const messages = await bobConversation.messages()
+  if (messages.length !== 1) {
+    throw new Error(`expected 1 message: got ${messages.length}`)
+  }
+  const message = messages[0]
+
+  const exportResult = await exportConversationTopicData(
+    alice.address,
+    bobConversation.topic
+  )
+  console.log(exportResult)
+  const importResult = await importConversationTopicData(
+    bob,
+    bobConversation.topic
+  )
+  console.log(importResult)
+
+  return importResult !== undefined
 })
 
 test('can pass a custom filter date and receive message objects with expected dates', async () => {
